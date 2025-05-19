@@ -121,6 +121,8 @@ st.title("🔐 Sistema de Comunicação Criptografada")
 tab1, tab2 = st.tabs(["🔒 Remetente", "🔓 Destinatário"])
 
 with tab1:
+    conn = None
+
     st.header("Criptografar Mensagem")
     message = st.text_area("Digite sua mensagem:")
     algorithm = st.radio("Algoritmo:", ("AES", "DES", "RSA"), horizontal=True)
@@ -154,7 +156,8 @@ with tab1:
 
 with tab2:
     st.header("Descriptografar Mensagem")
-    
+    conn = None
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
