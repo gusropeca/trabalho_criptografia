@@ -117,7 +117,7 @@ if 'rsa_keys' not in st.session_state:
 
 # Cria a tabela no PostgreSQL
 def init_db():
-    """Cria a tabela se não existir e adiciona a coluna 'signature' se necessário"""
+    """Cria a tabela se não existir e adiciona coluna 'signature' se necessário"""
     conn = None
     try:
         conn = get_db_connection()
@@ -125,24 +125,40 @@ def init_db():
             return False
 
         with conn.cursor() as cur:
+            # Cria a tabela se não existir
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id VARCHAR(50) PRIMARY KEY,
                     algorithm VARCHAR(10) NOT NULL,
                     encrypted_data TEXT NOT NULL,
                     key TEXT,
-                    signature TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
             conn.commit()
+
+            # Verifica se a coluna 'signature' existe
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='messages' AND column_name='signature';
+            """)
+            exists = cur.fetchone()
+
+            # Se não existir, adiciona a coluna
+            if not exists:
+                cur.execute("ALTER TABLE messages ADD COLUMN signature TEXT;")
+                conn.commit()
+
         return True
+
     except Exception as e:
         st.error(f"Erro ao criar tabela: {e}")
         return False
     finally:
         if conn is not None:
             conn.close()
+
 
 init_db()
 
