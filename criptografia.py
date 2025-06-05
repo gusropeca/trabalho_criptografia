@@ -3,6 +3,8 @@ from Crypto.Cipher import DES, AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Random import get_random_bytes
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
 import base64
 import psycopg2
 from datetime import datetime
@@ -90,26 +92,21 @@ def decrypt_message(package):
         return decrypted.decode('utf-8')
     
     elif algorithm == "RSA":
-        sender_private_key = RSA.import_key(st.session_state.rsa_keys['private'])
-        sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
-
-        # Criptografa com a chave pública do destinatário (simulado aqui como o próprio)
-        cipher = PKCS1_OAEP.new(sender_public_key)
-        encrypted = cipher.encrypt(message.encode('utf-8'))
-
-        # Assina com a chave privada
-        from Crypto.Signature import pkcs1_15
-        from Crypto.Hash import SHA256
-
-        h = SHA256.new(message.encode('utf-8'))
-        signature = pkcs1_15.new(sender_private_key).sign(h)
-
-        return {
-            'algorithm': 'RSA',
-            'data': base64.b64encode(encrypted).decode('utf-8'),
-            'key': None,
-            'signature': base64.b64encode(signature).decode('utf-8')
-        }
+        private_key = RSA.import_key(st.session_state.rsa_keys['private'])
+        cipher = PKCS1_OAEP.new(private_key)
+        decrypted = cipher.decrypt(encrypted_data)
+        
+        # Verifica a assinatura se existir
+        if package.get('signature'):
+            public_key = RSA.import_key(st.session_state.rsa_keys['public'])
+            h = SHA256.new(decrypted)
+            try:
+                pkcs1_15.new(public_key).verify(h, base64.b64decode(package['signature']))
+                st.info("✔️ Assinatura verificada com sucesso!")
+            except (ValueError, TypeError):
+                st.warning("⚠️ A assinatura não é válida!")
+        
+        return decrypted.decode('utf-8')
 
 
 # Inicialização
