@@ -91,12 +91,12 @@ def decrypt_message(package):
     elif algorithm == "RSA":
         sender_private_key = RSA.import_key(st.session_state.rsa_keys['private'])
         sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
-        
-        # Criptografa com a própria chave pública (simulação do destinatário)
+
+        # Criptografa com a chave pública do destinatário (simulado aqui como o próprio)
         cipher = PKCS1_OAEP.new(sender_public_key)
         encrypted = cipher.encrypt(message.encode('utf-8'))
 
-        # Assina a mensagem com a chave privada
+        # Assina com a chave privada
         from Crypto.Signature import pkcs1_15
         from Crypto.Hash import SHA256
 
@@ -109,6 +109,7 @@ def decrypt_message(package):
             'key': None,
             'signature': base64.b64encode(signature).decode('utf-8')
         }
+
 
 # Inicialização
 if 'rsa_keys' not in st.session_state:
