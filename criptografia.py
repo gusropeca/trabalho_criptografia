@@ -47,27 +47,28 @@ def encrypt_message(message, algorithm, key=None):
         }
     
     elif algorithm == "RSA":
-        cipher = PKCS1_OAEP.new(RSA.import_key(st.session_state.rsa_keys['private']))
-        decrypted = cipher.decrypt(encrypted_data)
-        decrypted_text = decrypted.decode('utf-8')
+        
+        sender_private_key = RSA.import_key(st.session_state.rsa_keys['private'])
+        sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
 
-        # Tenta verificar a assinatura, se existir
-        signature_b64 = package.get('signature')
-        if not signature_b64:
-            return f"[Mensagem sem assinatura ❔]\n\n{decrypted_text}"
+        # Criptografa a mensagem com a chave pública do destinatário (simulado como o próprio)
+        cipher = PKCS1_OAEP.new(sender_public_key)
+        encrypted = cipher.encrypt(message.encode('utf-8'))
 
-        try:
-            from Crypto.Signature import pkcs1_15
-            from Crypto.Hash import SHA256
+        # Assina com a chave privada do remetente
+        from Crypto.Signature import pkcs1_15
+        from Crypto.Hash import SHA256
 
-            signature = base64.b64decode(signature_b64)
-            h = SHA256.new(decrypted_text.encode('utf-8'))
-            sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
-            pkcs1_15.new(sender_public_key).verify(h, signature)
+        h = SHA256.new(message.encode('utf-8'))
+        signature = pkcs1_15.new(sender_private_key).sign(h)
 
-            return f"[Mensagem Autenticada ✅]\n\n{decrypted_text}"
-        except (ValueError, TypeError):
-            return f"[Mensagem NÃO Autenticada ❌] - Assinatura inválida\n\n{decrypted_text}"
+        return {
+            'algorithm': 'RSA',
+            'data': base64.b64encode(encrypted).decode('utf-8'),
+            'key': None,
+            'signature': base64.b64encode(signature).decode('utf-8')
+        }
+
 
 
 def decrypt_message(package):
