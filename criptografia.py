@@ -47,13 +47,28 @@ def encrypt_message(message, algorithm, key=None):
         }
     
     elif algorithm == "RSA":
-        cipher = PKCS1_OAEP.new(RSA.import_key(st.session_state.rsa_keys['public']))
+        # Importa chaves do remetente
+        sender_private_key = RSA.import_key(st.session_state.rsa_keys['private'])
+        sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
+        
+        # Criptografa a mensagem com a chave pública do destinatário (simulada como a própria neste exemplo)
+        cipher = PKCS1_OAEP.new(sender_public_key)
         encrypted = cipher.encrypt(message.encode('utf-8'))
+        
+        # Assina a mensagem com a chave privada
+        from Crypto.Signature import pkcs1_15
+        from Crypto.Hash import SHA256
+        
+        h = SHA256.new(message.encode('utf-8'))
+        signature = pkcs1_15.new(sender_private_key).sign(h)
+        
         return {
             'algorithm': 'RSA',
             'data': base64.b64encode(encrypted).decode('utf-8'),
-            'key': None
+            'key': None,
+            'signature': base64.b64encode(signature).decode('utf-8')
         }
+
 
 def decrypt_message(package):
     algorithm = package['algorithm']
@@ -76,7 +91,21 @@ def decrypt_message(package):
     elif algorithm == "RSA":
         cipher = PKCS1_OAEP.new(RSA.import_key(st.session_state.rsa_keys['private']))
         decrypted = cipher.decrypt(encrypted_data)
-        return decrypted.decode('utf-8')
+        decrypted_text = decrypted.decode('utf-8')
+        
+        # Verifica assinatura digital
+        from Crypto.Signature import pkcs1_15
+        from Crypto.Hash import SHA256
+        
+        signature = base64.b64decode(package['signature'])
+        h = SHA256.new(decrypted_text.encode('utf-8'))
+        
+        try:
+            sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
+            pkcs1_15.new(sender_public_key).verify(h, signature)
+            return f"[Mensagem Autenticada ✅]\n\n{decrypted_text}"
+        except (ValueError, TypeError):
+            return "[Mensagem NÃO Autenticada ❌] - Assinatura inválida"
 
 # Inicialização
 if 'rsa_keys' not in st.session_state:
@@ -101,6 +130,7 @@ def init_db():
                     id VARCHAR(50) PRIMARY KEY,
                     algorithm VARCHAR(10) NOT NULL,
                     encrypted_data TEXT NOT NULL,
+                    signature TEXT,
                     key TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
@@ -121,8 +151,6 @@ st.title("🔐 Sistema de Comunicação Criptografada")
 tab1, tab2 = st.tabs(["🔒 Remetente", "🔓 Destinatário"])
 
 with tab1:
-    conn = None
-
     st.header("Criptografar Mensagem")
     message = st.text_area("Digite sua mensagem:")
     algorithm = st.radio("Algoritmo:", ("AES", "DES", "RSA"), horizontal=True)
@@ -131,13 +159,17 @@ with tab1:
         if message:
             encrypted = encrypt_message(message, algorithm)
             
+            
             try:
                 conn = get_db_connection()
                 cur = conn.cursor()
+                signature = encrypted.get('signature')  # Pode ser None para AES e DES
+
                 cur.execute(
-                    "INSERT INTO messages (id, algorithm, encrypted_data, key) VALUES (%s, %s, %s, %s)",
-                    (str(uuid.uuid4()), algorithm, encrypted['data'], encrypted['key'])
+                    "INSERT INTO messages (id, algorithm, encrypted_data, key, signature) VALUES (%s, %s, %s, %s, %s)",
+                    (str(uuid.uuid4()), algorithm, encrypted['data'], encrypted['key'], signature)
                 )
+
                 conn.commit()
                 st.success("Mensagem criptografada e armazenada no banco de dados!")
                 
@@ -156,8 +188,7 @@ with tab1:
 
 with tab2:
     st.header("Descriptografar Mensagem")
-    conn = None
-
+    
     try:
         conn = get_db_connection()
         cur = conn.cursor()
