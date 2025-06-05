@@ -47,27 +47,27 @@ def encrypt_message(message, algorithm, key=None):
         }
     
     elif algorithm == "RSA":
-        # Importa chaves do remetente
-        sender_private_key = RSA.import_key(st.session_state.rsa_keys['private'])
-        sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
-        
-        # Criptografa a mensagem com a chave pública do destinatário (simulada como a própria neste exemplo)
-        cipher = PKCS1_OAEP.new(sender_public_key)
-        encrypted = cipher.encrypt(message.encode('utf-8'))
-        
-        # Assina a mensagem com a chave privada
-        from Crypto.Signature import pkcs1_15
-        from Crypto.Hash import SHA256
-        
-        h = SHA256.new(message.encode('utf-8'))
-        signature = pkcs1_15.new(sender_private_key).sign(h)
-        
-        return {
-            'algorithm': 'RSA',
-            'data': base64.b64encode(encrypted).decode('utf-8'),
-            'key': None,
-            'signature': base64.b64encode(signature).decode('utf-8')
-        }
+        cipher = PKCS1_OAEP.new(RSA.import_key(st.session_state.rsa_keys['private']))
+        decrypted = cipher.decrypt(encrypted_data)
+        decrypted_text = decrypted.decode('utf-8')
+
+        # Tenta verificar a assinatura, se existir
+        signature_b64 = package.get('signature')
+        if not signature_b64:
+            return f"[Mensagem sem assinatura ❔]\n\n{decrypted_text}"
+
+        try:
+            from Crypto.Signature import pkcs1_15
+            from Crypto.Hash import SHA256
+
+            signature = base64.b64decode(signature_b64)
+            h = SHA256.new(decrypted_text.encode('utf-8'))
+            sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
+            pkcs1_15.new(sender_public_key).verify(h, signature)
+
+            return f"[Mensagem Autenticada ✅]\n\n{decrypted_text}"
+        except (ValueError, TypeError):
+            return f"[Mensagem NÃO Autenticada ❌] - Assinatura inválida\n\n{decrypted_text}"
 
 
 def decrypt_message(package):
@@ -234,8 +234,9 @@ with tab2:
             )
             
             if selected_id:
-                cur.execute("SELECT algorithm, encrypted_data, key FROM messages WHERE id = %s", (selected_id,))
-                algorithm, encrypted_data, key = cur.fetchone()
+                cur.execute("SELECT algorithm, encrypted_data, key, signature FROM messages WHERE id = %s", (selected_id,))
+                algorithm, encrypted_data, key, signature = cur.fetchone()
+
                 
                 if algorithm in ["AES", "DES"]:
                     input_key = st.text_input(f"Insira a chave {algorithm}:")
@@ -243,12 +244,14 @@ with tab2:
                     input_key = None
                 
                 if st.button("🔓 Descriptografar"):
-                    try:
+                    try:                     
                         decrypted = decrypt_message({
-                            'algorithm': algorithm,
-                            'data': encrypted_data,
-                            'key': input_key if algorithm in ["AES", "DES"] else None
-                        })
+                        'algorithm': algorithm,
+                        'data': encrypted_data,
+                        'key': input_key if algorithm in ["AES", "DES"] else None,
+                        'signature': signature if algorithm == "RSA" else None
+                    })
+
                         st.success("Mensagem descriptografada com sucesso!")
                         st.text_area("Texto original:", value=decrypted, height=100)
                     except Exception as e:
