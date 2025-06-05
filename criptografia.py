@@ -117,21 +117,21 @@ if 'rsa_keys' not in st.session_state:
 
 # Cria a tabela no PostgreSQL
 def init_db():
-    """Cria a tabela se não existir"""
-    conn = None  # Inicializa a variável
+    """Cria a tabela se não existir e adiciona a coluna 'signature' se necessário"""
+    conn = None
     try:
         conn = get_db_connection()
         if conn is None:
             return False
-            
+
         with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id VARCHAR(50) PRIMARY KEY,
                     algorithm VARCHAR(10) NOT NULL,
                     encrypted_data TEXT NOT NULL,
-                    signature TEXT,
                     key TEXT,
+                    signature TEXT,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
@@ -143,6 +143,7 @@ def init_db():
     finally:
         if conn is not None:
             conn.close()
+
 init_db()
 
 # Interface Streamlit
@@ -188,6 +189,20 @@ with tab1:
 
 with tab2:
     st.header("Descriptografar Mensagem")
+    with st.expander("⚠️ Limpeza de Mensagens"):
+        if st.button("🗑️ Apagar todas as mensagens"):
+            try:
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("DELETE FROM messages")
+                conn.commit()
+                st.success("Todas as mensagens foram apagadas com sucesso.")
+            except Exception as e:
+                st.error(f"Erro ao apagar mensagens: {e}")
+            finally:
+                if conn:
+                    conn.close()
+
     
     try:
         conn = get_db_connection()
