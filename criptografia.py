@@ -209,7 +209,7 @@ with tab1:
             
             
             try:
-                conn = get_db_connectio n()
+                conn = get_db_connection()
                 cur = conn.cursor()
                 signature = encrypted.get('signature')  # Pode ser None para AES e DES
                 sender_ip = get_public_ip()
