@@ -9,9 +9,6 @@ from datetime import datetime
 import uuid
 import os
 import requests
-import streamlit.components.v1 as components
-import time
-
 
 
 def get_public_ip():
@@ -205,56 +202,6 @@ with tab1:
     st.header("Criptografar Mensagem")
     message = st.text_area("Digite sua mensagem:")
     algorithm = st.radio("Algoritmo:", ("AES", "DES", "RSA"), horizontal=True)
-    # Captura do IP real do remetente via navegador
-    st.subheader("📡 Capturando seu IP real...")
-    ip_placeholder = st.empty()
-    
-    if "client_ip" not in st.session_state:
-        st.session_state.client_ip = None
-    
-    # HTML + JS que pega o IP do navegador e envia para o Streamlit
-    components.html(
-        """
-        <script>
-        fetch("https://api.ipify.org/?format=json")
-            .then(response => response.json())
-            .then(data => {
-                const ip = data.ip;
-                const streamlitInput = window.parent.document.querySelector('iframe[title="streamlit.components.v1.html"]').parentElement;
-                streamlitInput.setAttribute("data-ip", ip);
-                window.parent.postMessage({type: "streamlit:setComponentValue", value: ip}, "*");
-            });
-        </script>
-        """,
-        height=0,
-    )
-    # Espera até que o IP seja recebido
-    if st.session_state.client_ip is None:
-        for _ in range(30):
-            if "_component_value" in st.session_state:
-                st.session_state.client_ip = st.session_state._component_value
-                break
-            time.sleep(0.1)
-    
-    if st.session_state.client_ip:
-        ip_placeholder.success(f"Seu IP detectado: `{st.session_state.client_ip}`")
-    else:
-        ip_placeholder.error("❌ Não foi possível capturar o IP real.")
-    
-
-# Espera até que o IP seja recebido
-if st.session_state.client_ip is None:
-    for _ in range(30):
-        if "_component_value" in st.session_state:
-            st.session_state.client_ip = st.session_state._component_value
-            break
-        time.sleep(0.1)
-
-if st.session_state.client_ip:
-    ip_placeholder.success(f"Seu IP detectado: `{st.session_state.client_ip}`")
-else:
-    ip_placeholder.error("❌ Não foi possível capturar o IP real.")
-
     
     if st.button("🛫 Enviar Mensagem Criptografada"):
         if message:
@@ -265,8 +212,7 @@ else:
                 conn = get_db_connection()
                 cur = conn.cursor()
                 signature = encrypted.get('signature')  # Pode ser None para AES e DES
-                sender_ip = st.session_state.get("client_ip", "IP não identificado")
-
+                sender_ip = get_public_ip()
 
                 cur.execute(
                     "INSERT INTO messages (id, algorithm, encrypted_data, key, signature, sender_ip) VALUES (%s, %s, %s, %s, %s, %s)",
@@ -339,8 +285,7 @@ with tab2:
                         'key': input_key if algorithm in ["AES", "DES"] else None,
                         'signature': signature if algorithm == "RSA" else None
                     })
-                        receiver_ip = st.session_state.get("client_ip", "IP não identificado")
-
+                        receiver_ip = get_public_ip()
 
                         # Mostra a mensagem
                         st.success("Mensagem descriptografada com sucesso!")
