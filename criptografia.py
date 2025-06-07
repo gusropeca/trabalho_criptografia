@@ -286,12 +286,15 @@ with tab2:
                         'signature': signature if algorithm == "RSA" else None
                     })
                         receiver_ip = get_public_ip()
+
+                        # Mostra a mensagem
+                        st.success("Mensagem descriptografada com sucesso!")
+                        st.text_area("Texto original:", value=decrypted, height=100)
+
+                        # Mostra os IPs
                         st.markdown(f"📡 **IP do Remetente:** `{sender_ip}`")
                         st.markdown(f"📥 **IP do Destinatário (você):** `{receiver_ip}`")
 
-
-                        st.success("Mensagem descriptografada com sucesso!")
-                        st.text_area("Texto original:", value=decrypted, height=100)
                     except Exception as e:
                         st.error(f"Falha na descriptografia: {str(e)}")
         else:
