@@ -208,6 +208,7 @@ if "client_ip" not in st.session_state:
     st.session_state.client_ip = None
 
 # HTML + JS para capturar o IP do navegador e enviar para o Python
+# Este script JavaScript será executado no navegador do usuário
 components.html(
     """
     <script>
@@ -215,28 +216,31 @@ components.html(
         .then(response => response.json())
         .then(data => {
             const ip = data.ip;
-            const streamlitInput = window.parent.document.querySelector('iframe[title="streamlit.components.v1.html"]').parentElement;
-            streamlitInput.setAttribute("data-ip", ip);
-            window.parent.postMessage({type: "streamlit:setComponentValue", value: ip}, "*");
+            // Envia o IP de volta para o Streamlit
+            window.parent.postMessage({
+                type: "streamlit:setComponentValue",
+                value: ip,
+                dataType: "string", // Especifica o tipo de dado
+                is and set as a component value.
+            }, "*");
         });
     </script>
     """,
-    height=0,
+    height=0, # Altura 0 para ser invisível
 )
 
-# Aguarda IP por até 3 segundos
-if st.session_state.client_ip is None:
-    for _ in range(30):
-        if "_component_value" in st.session_state:
-            st.session_state.client_ip = st.session_state._component_value
-            break
-        time.sleep(0.1)
+# Verifica se o valor do componente (o IP) foi recebido
+if "_component_value" in st.session_state and st.session_state._component_value:
+    st.session_state.client_ip = st.session_state._component_value
+else:
+    # Se o IP ainda não foi capturado, exibe uma mensagem de aguardo.
+    # O Streamlit continuará a execução e a JS terá tempo para rodar.
+    pass # Não usa st.stop() aqui para não travar a execução do JS
 
 if st.session_state.client_ip:
     ip_placeholder.success(f"🌐 Seu IP : `{st.session_state.client_ip}`")
 else:
-    ip_placeholder.error("❌ Não foi possível obter seu IP.")
-
+    ip_placeholder.warning("❌ Tentando obter seu IP... Por favor, aguarde.")
 
 
 tab1, tab2 = st.tabs(["🔒 Remetente", "🔓 Destinatário"])
@@ -246,45 +250,45 @@ with tab1:
     message = st.text_area("Digite sua mensagem:")
     algorithm = st.radio("Algoritmo:", ("AES", "DES", "RSA"), horizontal=True)
     
+    # Informa ao usuário que o IP está sendo capturado, mas não bloqueia a UI
     if st.session_state.get("client_ip") is None:
-        st.warning("Aguardando captura do seu IP público...")
-        st.stop()
-
+        st.info("Aguardando captura do seu IP público antes de enviar a mensagem...")
     
     if st.button("🛫 Enviar Mensagem Criptografada"):
         if message:
-            encrypted = encrypt_message(message, algorithm)
-            
-            
-            try:
-                conn = get_db_connection()
-                cur = conn.cursor()
-                signature = encrypted.get('signature')  # Pode ser None para AES e DES
-                sender_ip = st.session_state.get("client_ip", "IP não identificado")
-
-
-                cur.execute(
-                    "INSERT INTO messages (id, algorithm, encrypted_data, key, signature, sender_ip) VALUES (%s, %s, %s, %s, %s, %s)",
-                    (str(uuid.uuid4()), algorithm, encrypted['data'], encrypted['key'], signature, sender_ip)
-                )
-
-
-                conn.commit()
-                st.success("Mensagem criptografada e armazenada no banco de dados!")
+            # Verifica o IP novamente antes de tentar enviar
+            if st.session_state.get("client_ip") is None:
+                st.warning("Aguarde o IP ser capturado antes de enviar a mensagem.")
+                st.experimental_rerun() # Reinicia a execução para tentar pegar o IP
+            else:
+                encrypted = encrypt_message(message, algorithm)
                 
-                if algorithm in ["AES", "DES"]:
-                    st.warning(f"🔑 Chave necessária para descriptografia: {encrypted['key']}")
-                else:
-                    st.info("✔️ Mensagem RSA - Chave privada já está com o destinatário")
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    signature = encrypted.get('signature')
+                    # Usa o IP capturado ou um valor padrão se ainda for None
+                    sender_ip = st.session_state.get("client_ip", "IP não identificado")
+
+                    cur.execute(
+                        "INSERT INTO messages (id, algorithm, encrypted_data, key, signature, sender_ip) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (str(uuid.uuid4()), algorithm, encrypted['data'], encrypted['key'], signature, sender_ip)
+                    )
+                    conn.commit()
+                    st.success("Mensagem criptografada e armazenada no banco de dados!")
                     
-            except Exception as e:
-                st.error(f"Erro ao salvar no banco de dados: {e}")
-            finally:
-                if conn:
-                    conn.close()
+                    if algorithm in ["AES", "DES"]:
+                        st.warning(f"🔑 Chave necessária para descriptografia: {encrypted['key']}")
+                    else:   
+                        st.info("✔️ Mensagem RSA - Chave privada já está com o destinatário")
+                        
+                except Exception as e:
+                    st.error(f"Erro ao salvar no banco de dados: {e}")
+                finally:
+                    if conn:
+                        conn.close()
         else:
             st.warning("Por favor, digite uma mensagem")
-
 with tab2:
     st.header("Descriptografar Mensagem")
     with st.expander("⚠️ Limpeza de Mensagens"):
