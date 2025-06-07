@@ -3,8 +3,6 @@ from Crypto.Cipher import DES, AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Random import get_random_bytes
-from Crypto.Signature import pkcs1_15
-from Crypto.Hash import SHA256
 import base64
 import psycopg2
 from datetime import datetime
@@ -49,7 +47,7 @@ def encrypt_message(message, algorithm, key=None):
         }
     
     elif algorithm == "RSA":
-        
+       
         sender_private_key = RSA.import_key(st.session_state.rsa_keys['private'])
         sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
 
@@ -93,21 +91,32 @@ def decrypt_message(package):
     
     elif algorithm == "RSA":
         private_key = RSA.import_key(st.session_state.rsa_keys['private'])
+
+        # Descriptografa a mensagem com a chave privada
         cipher = PKCS1_OAEP.new(private_key)
         decrypted = cipher.decrypt(encrypted_data)
-        
-        # Verifica a assinatura se existir
-        if package.get('signature'):
-            public_key = RSA.import_key(st.session_state.rsa_keys['public'])
-            h = SHA256.new(decrypted)
-            try:
-                pkcs1_15.new(public_key).verify(h, base64.b64decode(package['signature']))
-                st.info("✔️ Assinatura verificada com sucesso!")
-            except (ValueError, TypeError):
-                st.warning("⚠️ A assinatura não é válida!")
-        
-        return decrypted.decode('utf-8')
+        decrypted_text = decrypted.decode('utf-8')
 
+        # Verifica a assinatura (usa a chave pública do REMETENTE)
+        from Crypto.Signature import pkcs1_15
+        from Crypto.Hash import SHA256
+
+        signature_b64 = package.get('signature')
+        if not signature_b64:
+            return f"[⚠️ Mensagem sem assinatura]\n\n{decrypted_text}"
+
+        try:
+            signature = base64.b64decode(signature_b64)
+            h = SHA256.new(decrypted_text.encode('utf-8'))
+
+            # Aqui, você precisa da CHAVE PÚBLICA do remetente
+            # Como você não está salvando isso no banco, vamos usar a própria, mas o ideal seria salvar isso no envio
+            sender_public_key = RSA.import_key(st.session_state.rsa_keys['public'])
+
+            pkcs1_15.new(sender_public_key).verify(h, signature)
+            return f"[✅ Mensagem Autêntica]\n\n{decrypted_text}"
+        except (ValueError, TypeError):
+            return f"[❌ Assinatura Inválida]\n\n{decrypted_text}"
 
 # Inicialização
 if 'rsa_keys' not in st.session_state:
