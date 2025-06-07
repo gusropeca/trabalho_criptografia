@@ -9,6 +9,8 @@ from datetime import datetime
 import uuid
 import os
 import requests
+import streamlit.components.v1 as components
+import time
 
 
 def get_public_ip():
@@ -196,6 +198,47 @@ init_db()
 # Interface Streamlit
 st.title("🔐 Sistema de Comunicação Criptografada")
 
+st.markdown("### 📡 Capturando seu IP real...")
+
+# Espaço reservado para exibir o IP
+ip_placeholder = st.empty()
+
+# Container oculto para armazenar o IP
+if "client_ip" not in st.session_state:
+    st.session_state.client_ip = None
+
+# HTML + JS para capturar o IP do navegador e enviar para o Python
+components.html(
+    """
+    <script>
+    fetch("https://api.ipify.org/?format=json")
+        .then(response => response.json())
+        .then(data => {
+            const ip = data.ip;
+            const streamlitInput = window.parent.document.querySelector('iframe[title="streamlit.components.v1.html"]').parentElement;
+            streamlitInput.setAttribute("data-ip", ip);
+            window.parent.postMessage({type: "streamlit:setComponentValue", value: ip}, "*");
+        });
+    </script>
+    """,
+    height=0,
+)
+
+# Aguarda IP por até 3 segundos
+if st.session_state.client_ip is None:
+    for _ in range(30):
+        if "_component_value" in st.session_state:
+            st.session_state.client_ip = st.session_state._component_value
+            break
+        time.sleep(0.1)
+
+if st.session_state.client_ip:
+    ip_placeholder.success(f"🌐 Seu IP : `{st.session_state.client_ip}`")
+else:
+    ip_placeholder.error("❌ Não foi possível obter seu IP.")
+
+
+
 tab1, tab2 = st.tabs(["🔒 Remetente", "🔓 Destinatário"])
 
 with tab1:
@@ -212,7 +255,8 @@ with tab1:
                 conn = get_db_connection()
                 cur = conn.cursor()
                 signature = encrypted.get('signature')  # Pode ser None para AES e DES
-                sender_ip = get_public_ip()
+                sender_ip = st.session_state.get("client_ip", "IP não identificado")
+
 
                 cur.execute(
                     "INSERT INTO messages (id, algorithm, encrypted_data, key, signature, sender_ip) VALUES (%s, %s, %s, %s, %s, %s)",
