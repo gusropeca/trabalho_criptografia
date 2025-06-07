@@ -8,6 +8,15 @@ import psycopg2
 from datetime import datetime
 import uuid
 import os
+import requests
+
+
+def get_public_ip():
+    try:
+        return requests.get("https://api.ipify.org").text
+    except:
+        return "IP não disponível"
+
 
 
 def get_db_connection():
@@ -157,9 +166,20 @@ def init_db():
             exists = cur.fetchone()
 
             # Se não existir, adiciona a coluna
-            if not exists:
+            if not exists:  
                 cur.execute("ALTER TABLE messages ADD COLUMN signature TEXT;")
                 conn.commit()
+                
+               # Adiciona coluna sender_ip se necessário
+            cur.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='messages' AND column_name='sender_ip';
+            """)
+            if not cur.fetchone():
+                cur.execute("ALTER TABLE messages ADD COLUMN sender_ip TEXT;")
+                conn.commit()
+ 
 
         return True
 
@@ -189,14 +209,16 @@ with tab1:
             
             
             try:
-                conn = get_db_connection()
+                conn = get_db_connectio n()
                 cur = conn.cursor()
                 signature = encrypted.get('signature')  # Pode ser None para AES e DES
+                sender_ip = get_public_ip()
 
                 cur.execute(
-                    "INSERT INTO messages (id, algorithm, encrypted_data, key, signature) VALUES (%s, %s, %s, %s, %s)",
-                    (str(uuid.uuid4()), algorithm, encrypted['data'], encrypted['key'], signature)
+                    "INSERT INTO messages (id, algorithm, encrypted_data, key, signature, sender_ip) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (str(uuid.uuid4()), algorithm, encrypted['data'], encrypted['key'], signature, sender_ip)
                 )
+
 
                 conn.commit()
                 st.success("Mensagem criptografada e armazenada no banco de dados!")
@@ -245,8 +267,9 @@ with tab2:
             )
             
             if selected_id:
-                cur.execute("SELECT algorithm, encrypted_data, key, signature FROM messages WHERE id = %s", (selected_id,))
-                algorithm, encrypted_data, key, signature = cur.fetchone()
+                cur.execute("SELECT algorithm, encrypted_data, key, signature, sender_ip FROM messages WHERE id = %s", (selected_id,))
+                algorithm, encrypted_data, key, signature, sender_ip = cur.fetchone()
+
 
                 
                 if algorithm in ["AES", "DES"]:
@@ -262,6 +285,10 @@ with tab2:
                         'key': input_key if algorithm in ["AES", "DES"] else None,
                         'signature': signature if algorithm == "RSA" else None
                     })
+                        receiver_ip = get_public_ip()
+                        st.markdown(f"📡 **IP do Remetente:** `{sender_ip}`")
+                        st.markdown(f"📥 **IP do Destinatário (você):** `{receiver_ip}`")
+
 
                         st.success("Mensagem descriptografada com sucesso!")
                         st.text_area("Texto original:", value=decrypted, height=100)
