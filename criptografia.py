@@ -246,6 +246,11 @@ with tab1:
     message = st.text_area("Digite sua mensagem:")
     algorithm = st.radio("Algoritmo:", ("AES", "DES", "RSA"), horizontal=True)
     
+    if st.session_state.get("client_ip") is None:
+        st.warning("Aguardando captura do seu IP público...")
+        st.stop()
+
+    
     if st.button("🛫 Enviar Mensagem Criptografada"):
         if message:
             encrypted = encrypt_message(message, algorithm)
